@@ -1,0 +1,222 @@
+Write a secondary sort program to generate the top 2 maximum temperatures corresponding
+to every year from the temperature dataset. 
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.NullWritable;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+public class drv {
+
+    public static void main(String[] args) throws Exception {
+
+        if(args.length < 2){
+            System.out.println("Please supply in input and output path");
+            System.exit(1);
+        }
+        
+      //Job Related Configurations
+        Configuration conf = new Configuration();
+        Job job = new Job(conf, "Secondary Sort Example");
+        job.setJarByClass(drv.class);
+        
+        FileInputFormat.addInputPath(job, new Path(args[0]));
+        FileOutputFormat.setOutputPath(job, new Path(args[1]));
+        //Provide paths to pick the input file for the job
+        FileInputFormat.setInputPaths(job, new Path(args[0]));
+        
+        
+        //Provide paths to pick the output file for the job, and delete it if already present
+        Path outputPath = new Path(args[1]);
+        FileOutputFormat.setOutputPath(job, outputPath);
+        outputPath.getFileSystem(conf).delete(outputPath, true);
+
+        
+        job.setOutputKeyClass(TemperaturePair.class);
+        job.setOutputValueClass(NullWritable.class);
+        job.setMapperClass(mpr.class);
+       // job.setPartitionerClass(partr.class);
+        job.setGroupingComparatorClass(grpComprtr.class);
+        job.setReducerClass(rdcr.class);
+        System.exit(job.waitForCompletion(true) ? 0 : 1);
+
+    }
+}
+
+
+
+MAPPER
+
+
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.NullWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Mapper;
+
+import java.io.IOException;
+
+
+public class mpr extends Mapper<LongWritable, Text, TemperaturePair, NullWritable> {
+
+  
+    private NullWritable nullValue = NullWritable.get();
+   
+   private TemperaturePair x =new TemperaturePair();
+    @Override
+    protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+        String line = value.toString();
+       String[] f = line.split(",");
+       String[] d = f[0].split("-");
+       x.setYearMonth(d[2]);
+       x.setTemperature(Integer.parseInt(f[2]));
+
+       context.write(x,nullValue);
+        
+    }
+}
+
+
+
+
+REDUCER
+
+
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.NullWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Reducer;
+
+import java.io.IOException;
+
+
+public class rdcr extends Reducer<TemperaturePair, NullWritable, Text, IntWritable> {
+     int sum=0;
+    @Override
+    protected void reduce(TemperaturePair key, Iterable<NullWritable> values, Context context) throws IOException, InterruptedException {
+      sum=0;
+        for(NullWritable x:values)
+        {
+            if(sum==1||sum==0)
+            {
+              context.write(key.getYearMonth(), key.getTemperature());
+            }
+            sum++;
+        }
+    }
+}
+
+
+
+
+composite key
+
+
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.Writable;
+import org.apache.hadoop.io.WritableComparable;
+
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
+
+
+public class TemperaturePair implements Writable, WritableComparable<TemperaturePair> {
+
+    private Text year = new Text();
+    private IntWritable temperature = new IntWritable();
+
+
+    public TemperaturePair() {
+    }
+
+    public TemperaturePair(String ym, int temp) {
+        year.set(ym);
+        temperature.set(temp);
+    }
+
+    public static TemperaturePair read(DataInput in) throws IOException {
+        TemperaturePair temperaturePair = new TemperaturePair();
+        temperaturePair.readFields(in);
+        return temperaturePair;
+    }
+
+    @Override
+    public void write(DataOutput out) throws IOException {
+        year.write(out);
+        temperature.write(out);
+    }
+
+    @Override
+    public void readFields(DataInput in) throws IOException {
+        year.readFields(in);
+        temperature.readFields(in);
+    }
+
+    @Override
+    public int compareTo(TemperaturePair temperaturePair) {
+        int compareValue = this.year.compareTo(temperaturePair.getYearMonth());
+        if (compareValue == 0) {
+            compareValue =(-1)*temperature.compareTo(temperaturePair.getTemperature());
+        }
+        return compareValue;
+    }
+
+    public Text getYearMonth() {
+        return year;
+    }
+
+    public IntWritable getTemperature() {
+        return temperature;
+    }
+
+    public void setYearMonth(String yearMonthStr) {
+        year.set(yearMonthStr);
+    }
+
+    public void setTemperature(int temp) {
+        temperature.set(temp);
+    }
+
+    
+
+    @Override
+    public String toString() {
+        return "year=" + year +
+                ", temperature=" + temperature ;
+    }
+}
+
+
+
+
+
+GROUP COMPARATER
+
+
+import org.apache.hadoop.io.WritableComparable;
+import org.apache.hadoop.io.WritableComparator;
+
+/**
+ * User: Bill Bejeck
+ * Date: 1/7/13
+ * Time: 11:00 PM
+ */
+public class grpComprtr extends WritableComparator {
+
+
+    public grpComprtr() {
+        super(TemperaturePair.class, true);
+    }
+
+
+    @Override
+    public int compare(WritableComparable tp1, WritableComparable tp2) {
+        TemperaturePair temperaturePair = (TemperaturePair) tp1;
+        TemperaturePair temperaturePair2 = (TemperaturePair) tp2;
+        return temperaturePair.getYearMonth().compareTo(temperaturePair2.getYearMonth());
+    }
+}
+
